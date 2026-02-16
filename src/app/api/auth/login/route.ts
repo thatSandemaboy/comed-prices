@@ -1,9 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createUser, createMagicToken } from '@/lib/db';
-import { sendMagicLinkEmail } from '@/lib/notifications';
 import { randomBytes } from 'crypto';
 
+const IS_SERVERLESS = process.env.VERCEL === '1';
+
 export async function POST(request: NextRequest) {
+  if (IS_SERVERLESS) {
+    return NextResponse.json(
+      { error: 'Authentication is not available on serverless deployments. Run locally for full features.' },
+      { status: 501 }
+    );
+  }
+
   try {
     const { email } = await request.json();
 
@@ -22,6 +29,9 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
+
+    const { createUser, createMagicToken } = await import('@/lib/db');
+    const { sendMagicLinkEmail } = await import('@/lib/notifications');
 
     // Create user if doesn't exist
     createUser(email.toLowerCase());

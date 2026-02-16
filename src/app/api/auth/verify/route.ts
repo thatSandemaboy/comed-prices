@@ -1,16 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { verifyMagicToken, getUserByEmail } from '@/lib/db';
 import { cookies } from 'next/headers';
 
+const IS_SERVERLESS = process.env.VERCEL === '1';
+
 export async function GET(request: NextRequest) {
-  const token = request.nextUrl.searchParams.get('token');
   const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+
+  if (IS_SERVERLESS) {
+    return NextResponse.redirect(`${appUrl}/login?error=not_available`);
+  }
+
+  const token = request.nextUrl.searchParams.get('token');
 
   if (!token) {
     return NextResponse.redirect(`${appUrl}/login?error=missing_token`);
   }
 
   try {
+    const { verifyMagicToken, getUserByEmail } = await import('@/lib/db');
     const result = verifyMagicToken(token);
 
     if (!result) {

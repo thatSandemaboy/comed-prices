@@ -1,17 +1,32 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
-import {
-  createAlert,
-  getAlertsByUser,
-  updateAlert,
-  deleteAlert,
-  getUserById,
-  savePushSubscription,
-} from '@/lib/db';
-import { getVapidPublicKey } from '@/lib/notifications';
+
+// Check if we're in a serverless environment without persistent storage
+const IS_SERVERLESS = process.env.VERCEL === '1';
+
+// Dynamic imports for database functions (only work locally)
+async function getDbFunctions() {
+  if (IS_SERVERLESS) return null;
+  try {
+    const db = await import('@/lib/db');
+    return db;
+  } catch {
+    return null;
+  }
+}
 
 // Get user's alerts
 export async function GET() {
+  const db = await getDbFunctions();
+
+  if (!db) {
+    return NextResponse.json({
+      alerts: [],
+      vapidPublicKey: process.env.VAPID_PUBLIC_KEY || '',
+      message: 'Alerts require a persistent database. Run locally with the worker for full functionality.',
+    });
+  }
+
   try {
     const cookieStore = await cookies();
     const userId = cookieStore.get('userId')?.value;
@@ -23,7 +38,7 @@ export async function GET() {
       );
     }
 
-    const user = getUserById(parseInt(userId));
+    const user = db.getUserById(parseInt(userId));
     if (!user) {
       return NextResponse.json(
         { error: 'User not found' },
@@ -31,7 +46,7 @@ export async function GET() {
       );
     }
 
-    const alerts = getAlertsByUser(user.id);
+    const alerts = db.getAlertsByUser(user.id);
 
     return NextResponse.json({
       alerts: alerts.map((a) => ({
@@ -45,7 +60,7 @@ export async function GET() {
         notifyEmail: Boolean(a.notify_email),
         notifyPush: Boolean(a.notify_push),
       })),
-      vapidPublicKey: getVapidPublicKey(),
+      vapidPublicKey: process.env.VAPID_PUBLIC_KEY || '',
     });
   } catch (error) {
     console.error('Error getting alerts:', error);
@@ -58,6 +73,15 @@ export async function GET() {
 
 // Create or update alerts
 export async function POST(request: NextRequest) {
+  const db = await getDbFunctions();
+
+  if (!db) {
+    return NextResponse.json(
+      { error: 'Alerts require a persistent database. This feature is not available on serverless deployments.' },
+      { status: 501 }
+    );
+  }
+
   try {
     const cookieStore = await cookies();
     const userId = cookieStore.get('userId')?.value;
@@ -69,7 +93,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const user = getUserById(parseInt(userId));
+    const user = db.getUserById(parseInt(userId));
     if (!user) {
       return NextResponse.json(
         { error: 'User not found' },
@@ -90,7 +114,7 @@ export async function POST(request: NextRequest) {
           );
         }
 
-        const result = createAlert(user.id, thresholdCents, cooldownMinutes);
+        const result = db.createAlert(user.id, thresholdCents, cooldownMinutes);
         return NextResponse.json({
           success: true,
           alertId: result.lastInsertRowid,
@@ -114,7 +138,7 @@ export async function POST(request: NextRequest) {
         if ('notifyEmail' in updates) dbUpdates.notify_email = updates.notifyEmail ? 1 : 0;
         if ('notifyPush' in updates) dbUpdates.notify_push = updates.notifyPush ? 1 : 0;
 
-        updateAlert(alertId, dbUpdates);
+        db.updateAlert(alertId, dbUpdates);
         return NextResponse.json({ success: true });
       }
 
@@ -127,7 +151,7 @@ export async function POST(request: NextRequest) {
           );
         }
 
-        deleteAlert(alertId);
+        db.deleteAlert(alertId);
         return NextResponse.json({ success: true });
       }
 
@@ -140,7 +164,7 @@ export async function POST(request: NextRequest) {
           );
         }
 
-        savePushSubscription(
+        db.savePushSubscription(
           user.id,
           subscription.endpoint,
           subscription.keys.p256dh,
