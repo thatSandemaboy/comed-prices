@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getHourlyAverages } from '@/lib/comed-api';
 
 export const dynamic = 'force-dynamic';
+
+const BASE_URL = 'https://hourlypricing.comed.com';
 
 // Activity presets with typical durations
 const ACTIVITY_PRESETS = {
@@ -18,10 +19,25 @@ export async function GET(request: NextRequest) {
   const activity = searchParams.get('activity') as keyof typeof ACTIVITY_PRESETS | null;
 
   try {
-    // Get last 7 days of hourly data for pattern analysis
-    const now = new Date();
-    const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-    const hourlyPrices = await getHourlyAverages(weekAgo, now);
+    // Get 5-minute feed and aggregate to hourly
+    const response = await fetch(`${BASE_URL}/api?type=5minutefeed`, {
+      cache: 'no-store',
+    });
+
+    if (!response.ok) {
+      throw new Error(`ComEd API error: ${response.status}`);
+    }
+
+    const data = await response.json();
+    if (!Array.isArray(data) || data.length === 0) {
+      throw new Error('No data available');
+    }
+
+    // Convert to hourly prices by grouping
+    const hourlyPrices = data.map((item: { millisUTC: string; price: string }) => ({
+      millisUTC: parseInt(item.millisUTC),
+      price: parseFloat(item.price),
+    }));
 
     // Group by hour of day
     const hourlyAvg = new Map<number, { total: number; count: number }>();
