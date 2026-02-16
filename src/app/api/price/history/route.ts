@@ -1,30 +1,43 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { get5MinutePrices, getHourlyAverages } from '@/lib/comed-api';
 
 export const dynamic = 'force-dynamic';
+
+const BASE_URL = 'https://hourlypricing.comed.com';
 
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
   const hours = parseInt(searchParams.get('hours') || '24');
-  const type = searchParams.get('type') || '5min'; // '5min' or 'hourly'
 
   try {
-    const now = new Date();
-    const startDate = new Date(now.getTime() - hours * 60 * 60 * 1000);
+    // Fetch from ComEd API without date params (returns ~24 hours of data)
+    const response = await fetch(`${BASE_URL}/api?type=5minutefeed`, {
+      cache: 'no-store',
+    });
 
-    // Get from ComEd API
-    let prices;
-    if (type === 'hourly') {
-      prices = await getHourlyAverages(startDate, now);
-    } else {
-      prices = await get5MinutePrices(startDate, now);
+    if (!response.ok) {
+      throw new Error(`ComEd API error: ${response.status}`);
     }
 
+    const data = await response.json();
+
+    if (!Array.isArray(data)) {
+      throw new Error('Invalid response format');
+    }
+
+    // Filter to requested time range
+    const now = Date.now();
+    const cutoff = now - hours * 60 * 60 * 1000;
+
+    const prices = data
+      .map((item: { millisUTC: string; price: string }) => ({
+        timestamp: parseInt(item.millisUTC),
+        price: parseFloat(item.price),
+      }))
+      .filter((p: { timestamp: number }) => p.timestamp >= cutoff)
+      .sort((a: { timestamp: number }, b: { timestamp: number }) => a.timestamp - b.timestamp);
+
     return NextResponse.json({
-      prices: prices.map((p) => ({
-        timestamp: p.millisUTC,
-        price: p.price,
-      })),
+      prices,
       source: 'comed-api',
       count: prices.length,
     });
