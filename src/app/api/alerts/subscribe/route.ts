@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
+import { getAuthenticatedUser } from '@/lib/auth';
 
 // Check if we're in a serverless environment without persistent storage
 const IS_SERVERLESS = process.env.VERCEL === '1';
@@ -28,21 +28,11 @@ export async function GET() {
   }
 
   try {
-    const cookieStore = await cookies();
-    const userId = cookieStore.get('userId')?.value;
-
-    if (!userId) {
+    const user = await getAuthenticatedUser();
+    if (!user) {
       return NextResponse.json(
         { error: 'Not authenticated' },
         { status: 401 }
-      );
-    }
-
-    const user = db.getUserById(parseInt(userId));
-    if (!user) {
-      return NextResponse.json(
-        { error: 'User not found' },
-        { status: 404 }
       );
     }
 
@@ -83,21 +73,11 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const cookieStore = await cookies();
-    const userId = cookieStore.get('userId')?.value;
-
-    if (!userId) {
+    const user = await getAuthenticatedUser();
+    if (!user) {
       return NextResponse.json(
         { error: 'Not authenticated' },
         { status: 401 }
-      );
-    }
-
-    const user = db.getUserById(parseInt(userId));
-    if (!user) {
-      return NextResponse.json(
-        { error: 'User not found' },
-        { status: 404 }
       );
     }
 
@@ -138,7 +118,13 @@ export async function POST(request: NextRequest) {
         if ('notifyEmail' in updates) dbUpdates.notify_email = updates.notifyEmail ? 1 : 0;
         if ('notifyPush' in updates) dbUpdates.notify_push = updates.notifyPush ? 1 : 0;
 
-        db.updateAlert(alertId, dbUpdates);
+        const result = db.updateAlert(alertId, user.id, dbUpdates);
+        if (!result || result.changes === 0) {
+          return NextResponse.json(
+            { error: 'Alert not found' },
+            { status: 404 }
+          );
+        }
         return NextResponse.json({ success: true });
       }
 
@@ -151,7 +137,13 @@ export async function POST(request: NextRequest) {
           );
         }
 
-        db.deleteAlert(alertId);
+        const result = db.deleteAlert(alertId, user.id);
+        if (result.changes === 0) {
+          return NextResponse.json(
+            { error: 'Alert not found' },
+            { status: 404 }
+          );
+        }
         return NextResponse.json({ success: true });
       }
 
