@@ -2,22 +2,9 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useEffect, useState } from 'react';
 
 export default function Navigation() {
   const pathname = usePathname();
-  const [user, setUser] = useState<{ email: string } | null>(null);
-
-  useEffect(() => {
-    fetch('/api/auth/me')
-      .then((r) => r.json())
-      .then((data) => {
-        if (data.authenticated) {
-          setUser(data.user);
-        }
-      })
-      .catch(() => {});
-  }, []);
 
   const links = [
     { href: '/', label: 'Dashboard' },
@@ -52,25 +39,8 @@ export default function Navigation() {
               ))}
             </div>
           </div>
-          <div>
-            {user ? (
-              <div className="flex items-center gap-3">
-                <span className="text-sm text-zinc-500">{user.email}</span>
-                <Link
-                  href="/api/auth/logout"
-                  className="text-sm text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white"
-                >
-                  Sign Out
-                </Link>
-              </div>
-            ) : (
-              <Link
-                href="/login"
-                className="px-4 py-1.5 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors"
-              >
-                Sign In
-              </Link>
-            )}
+          <div className="text-sm text-zinc-500 dark:text-zinc-400">
+            Alerts coming soon
           </div>
         </div>
       </div>
