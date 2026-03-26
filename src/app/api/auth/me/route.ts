@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
+import { getAuthenticatedUser } from '@/lib/auth';
 
 const IS_SERVERLESS = process.env.VERCEL === '1';
 
@@ -10,16 +10,7 @@ export async function GET() {
   }
 
   try {
-    const cookieStore = await cookies();
-    const userId = cookieStore.get('userId')?.value;
-
-    if (!userId) {
-      return NextResponse.json({ authenticated: false });
-    }
-
-    // Dynamic import to avoid loading sqlite on serverless
-    const { getUserById } = await import('@/lib/db');
-    const user = getUserById(parseInt(userId));
+    const user = await getAuthenticatedUser();
 
     if (!user) {
       return NextResponse.json({ authenticated: false });

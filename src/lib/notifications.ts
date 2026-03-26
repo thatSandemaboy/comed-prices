@@ -31,6 +31,10 @@ function getResend(): Resend | null {
   return resend;
 }
 
+export function canSendEmail(): boolean {
+  return Boolean(process.env.RESEND_API_KEY && process.env.FROM_EMAIL);
+}
+
 export interface PriceAlert {
   price: number;
   threshold: number;
@@ -81,8 +85,8 @@ export async function checkAndNotify(currentPrice: number): Promise<{
       const subscriptions = getPushSubscriptionsByUser(alert.user_id);
       for (const sub of subscriptions) {
         try {
-          await sendPushNotification(sub, alertInfo);
-          pushSent++;
+          const sent = await sendPushNotification(sub, alertInfo);
+          if (sent) pushSent++;
         } catch (error) {
           console.error('Push notification failed:', error);
           // Remove invalid subscription
@@ -99,8 +103,8 @@ export async function checkAndNotify(currentPrice: number): Promise<{
     // Send email notification
     if (alert.notify_email && alert.email) {
       try {
-        await sendEmailNotification(alert.email, alertInfo);
-        emailSent++;
+        const sent = await sendEmailNotification(alert.email, alertInfo);
+        if (sent) emailSent++;
       } catch (error) {
         console.error('Email notification failed:', error);
       }
@@ -123,7 +127,7 @@ async function sendPushNotification(
 ) {
   if (!VAPID_PUBLIC_KEY || !VAPID_PRIVATE_KEY) {
     console.warn('VAPID keys not configured, skipping push notification');
-    return;
+    return false;
   }
 
   ensureVapidConfigured();
@@ -151,6 +155,7 @@ async function sendPushNotification(
     },
     payload
   );
+  return true;
 }
 
 /**
@@ -160,7 +165,7 @@ async function sendEmailNotification(email: string, alert: PriceAlert) {
   const resendClient = getResend();
   if (!resendClient) {
     console.warn('Resend API key not configured, skipping email notification');
-    return;
+    return false;
   }
 
   const fromEmail = process.env.FROM_EMAIL || 'alerts@resend.dev';
@@ -196,6 +201,7 @@ async function sendEmailNotification(email: string, alert: PriceAlert) {
       </div>
     `,
   });
+  return true;
 }
 
 /**
@@ -204,8 +210,7 @@ async function sendEmailNotification(email: string, alert: PriceAlert) {
 export async function sendMagicLinkEmail(email: string, token: string) {
   const resendClient = getResend();
   if (!resendClient) {
-    console.warn('Resend API key not configured, skipping magic link email');
-    return;
+    throw new Error('Email delivery is not configured');
   }
 
   const fromEmail = process.env.FROM_EMAIL || 'auth@resend.dev';

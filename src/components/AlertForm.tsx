@@ -25,28 +25,24 @@ export default function AlertForm({ onLoginRequired }: AlertFormProps) {
   const [pushEnabled, setPushEnabled] = useState(false);
 
   useEffect(() => {
-    checkAuth();
-    checkPushSupport();
-  }, []);
-
-  async function checkAuth() {
-    try {
-      const response = await fetch('/api/auth/me');
-      const data = await response.json();
-      setAuthenticated(data.authenticated);
-      if (data.authenticated) {
-        fetchAlerts();
-      } else {
+    async function initialize() {
+      try {
+        const response = await fetch('/api/auth/me');
+        const data = await response.json();
+        setAuthenticated(data.authenticated);
+        if (data.authenticated) {
+          await fetchAlerts();
+        } else {
+          setLoading(false);
+        }
+      } catch {
         setLoading(false);
       }
-    } catch {
-      setLoading(false);
     }
-  }
 
-  function checkPushSupport() {
+    initialize();
     setPushSupported('serviceWorker' in navigator && 'PushManager' in window);
-  }
+  }, []);
 
   async function fetchAlerts() {
     try {

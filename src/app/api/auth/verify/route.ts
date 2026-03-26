@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
+import { randomBytes } from 'crypto';
+import { AUTH_COOKIE_NAME } from '@/lib/auth';
 
 const IS_SERVERLESS = process.env.VERCEL === '1';
 
@@ -17,7 +19,7 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const { verifyMagicToken, getUserByEmail } = await import('@/lib/db');
+    const { verifyMagicToken, getUserByEmail, createAuthSession } = await import('@/lib/db');
     const result = verifyMagicToken(token);
 
     if (!result) {
@@ -30,9 +32,12 @@ export async function GET(request: NextRequest) {
       return NextResponse.redirect(`${appUrl}/login?error=user_not_found`);
     }
 
+    const sessionToken = randomBytes(32).toString('hex');
+    createAuthSession(user.id, sessionToken);
+
     // Set auth cookie
     const cookieStore = await cookies();
-    cookieStore.set('userId', user.id.toString(), {
+    cookieStore.set(AUTH_COOKIE_NAME, sessionToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',

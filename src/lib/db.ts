@@ -99,6 +99,16 @@ function initializeSchema(db: Database.Database) {
       created_at INTEGER DEFAULT (unixepoch())
     );
     CREATE INDEX IF NOT EXISTS idx_magic_token ON magic_tokens(token);
+
+    -- Auth sessions
+    CREATE TABLE IF NOT EXISTS auth_sessions (
+      token TEXT PRIMARY KEY,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      expires_at INTEGER NOT NULL,
+      created_at INTEGER DEFAULT (unixepoch())
+    );
+    CREATE INDEX IF NOT EXISTS idx_auth_sessions_user ON auth_sessions(user_id);
+    CREATE INDEX IF NOT EXISTS idx_auth_sessions_expires ON auth_sessions(expires_at);
   `);
 }
 
@@ -143,18 +153,32 @@ export function getTodayStats() {
 // Day-ahead operations
 export function insertDayAheadPrediction(hourStart: number, predictedPrice: number, fetchedAt: number) {
   const db = getDb();
-  const stmt = db.prepare(`
-    INSERT OR REPLACE INTO day_ahead_predictions (hour_start, predicted_price, fetched_at)
+  const deleteStmt = db.prepare(`
+    DELETE FROM day_ahead_predictions WHERE hour_start = ?
+  `);
+  const insertStmt = db.prepare(`
+    INSERT INTO day_ahead_predictions (hour_start, predicted_price, fetched_at)
     VALUES (?, ?, ?)
   `);
-  return stmt.run(hourStart, predictedPrice, fetchedAt);
+  const transaction = db.transaction((nextHourStart: number, nextPredictedPrice: number, nextFetchedAt: number) => {
+    deleteStmt.run(nextHourStart);
+    return insertStmt.run(nextHourStart, nextPredictedPrice, nextFetchedAt);
+  });
+  return transaction(hourStart, predictedPrice, fetchedAt);
 }
 
 export function getDayAheadPredictions(startTime: number, endTime: number) {
   const db = getDb();
   return db.prepare(`
-    SELECT hour_start, predicted_price FROM day_ahead_predictions
-    WHERE hour_start >= ? AND hour_start <= ?
+    SELECT dap.hour_start, dap.predicted_price FROM day_ahead_predictions dap
+    JOIN (
+      SELECT hour_start, MAX(fetched_at) AS fetched_at
+      FROM day_ahead_predictions
+      WHERE hour_start >= ? AND hour_start <= ?
+      GROUP BY hour_start
+    ) latest
+      ON latest.hour_start = dap.hour_start
+      AND latest.fetched_at = dap.fetched_at
     ORDER BY hour_start ASC
   `).all(startTime, endTime) as { hour_start: number; predicted_price: number }[];
 }
@@ -241,7 +265,7 @@ export function updateAlertTriggered(alertId: number) {
   return stmt.run(alertId);
 }
 
-export function updateAlert(alertId: number, updates: {
+export function updateAlert(alertId: number, userId: number, updates: {
   threshold_cents?: number;
   enabled?: number;
   cooldown_minutes?: number;
@@ -256,13 +280,13 @@ export function updateAlert(alertId: number, updates: {
 
   if (fields.length === 0) return;
 
-  const stmt = db.prepare(`UPDATE alerts SET ${fields.join(', ')} WHERE id = ?`);
-  return stmt.run(...values, alertId);
+  const stmt = db.prepare(`UPDATE alerts SET ${fields.join(', ')} WHERE id = ? AND user_id = ?`);
+  return stmt.run(...values, alertId, userId);
 }
 
-export function deleteAlert(alertId: number) {
+export function deleteAlert(alertId: number, userId: number) {
   const db = getDb();
-  return db.prepare(`DELETE FROM alerts WHERE id = ?`).run(alertId);
+  return db.prepare(`DELETE FROM alerts WHERE id = ? AND user_id = ?`).run(alertId, userId);
 }
 
 // Push subscription operations
@@ -358,4 +382,40 @@ export function verifyMagicToken(token: string) {
   }
 
   return result;
+}
+
+// Auth session operations
+export function createAuthSession(userId: number, token: string, expiresIn = 30 * 24 * 60 * 60) {
+  const db = getDb();
+  const expiresAt = Math.floor(Date.now() / 1000) + expiresIn;
+  db.prepare(`
+    INSERT INTO auth_sessions (token, user_id, expires_at) VALUES (?, ?, ?)
+  `).run(token, userId, expiresAt);
+  return { token, expiresAt };
+}
+
+export function getUserBySessionToken(token: string) {
+  const db = getDb();
+  const now = Math.floor(Date.now() / 1000);
+  return db.prepare(`
+    SELECT u.id, u.email, u.created_at
+    FROM auth_sessions s
+    JOIN users u ON s.user_id = u.id
+    WHERE s.token = ? AND s.expires_at > ?
+  `).get(token, now) as {
+    id: number;
+    email: string;
+    created_at: number;
+  } | undefined;
+}
+
+export function deleteAuthSession(token: string) {
+  const db = getDb();
+  return db.prepare(`DELETE FROM auth_sessions WHERE token = ?`).run(token);
+}
+
+export function deleteExpiredAuthSessions() {
+  const db = getDb();
+  const now = Math.floor(Date.now() / 1000);
+  return db.prepare(`DELETE FROM auth_sessions WHERE expires_at <= ?`).run(now);
 }

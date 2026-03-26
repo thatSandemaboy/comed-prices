@@ -30,8 +30,16 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const { canSendEmail, sendMagicLinkEmail } = await import('@/lib/notifications');
+
+    if (!canSendEmail()) {
+      return NextResponse.json(
+        { error: 'Email login is not configured on this deployment' },
+        { status: 503 }
+      );
+    }
+
     const { createUser, createMagicToken } = await import('@/lib/db');
-    const { sendMagicLinkEmail } = await import('@/lib/notifications');
 
     // Create user if doesn't exist
     createUser(email.toLowerCase());
