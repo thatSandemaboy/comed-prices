@@ -1,6 +1,10 @@
 # ComEd Hourly Pricing App
 
-A Progressive Web App (PWA) that displays real-time ComEd electricity prices, sends alerts when prices drop below thresholds, and recommends optimal times for high-energy activities.
+A Progressive Web App that tracks real-time ComEd hourly electricity prices, sends price alerts, and recommends better times for high-energy activities.
+
+## Why This Exists
+
+ComEd hourly pricing rewards people who can shift flexible electricity usage away from expensive periods. This app turns a noisy real-time price feed into a practical decision surface: current price, recent trend, day-ahead signal, and recommendations for appliances like laundry, dishwashers, and EV charging.
 
 ## Features
 
@@ -10,6 +14,10 @@ A Progressive Web App (PWA) that displays real-time ComEd electricity prices, se
 - **Price Alerts**: Get notified via email or push notification when prices drop below your threshold
 - **Day-Ahead Predictions**: See tomorrow's expected prices (when available)
 - **PWA Support**: Install on your phone, works offline
+
+## Portfolio Note
+
+This is a practical local-utility product: real data ingestion, user-facing recommendations, background collection, alerts, and a PWA frontend. The repo is useful as evidence of turning a public data source into a small decision-support product.
 
 ## Quick Start
 
